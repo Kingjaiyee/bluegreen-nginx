@@ -1,0 +1,9 @@
+name: optional-ci (disabled by default)
+on:
+  workflow_dispatch:
+
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Enable a real test workflow once BLUE_IMAGE/GREEN_IMAGE are pullable from the runner."
