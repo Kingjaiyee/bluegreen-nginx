@@ -5,6 +5,7 @@ services:
     image: ${BLUE_IMAGE}
     container_name: app_blue
     environment:
+      - APP_POOL=blue
       # The sample Node app reads RELEASE_ID and PORT (optional) to render headers and bind.
       - RELEASE_ID=${RELEASE_ID_BLUE}
       - PORT=80
@@ -22,6 +23,7 @@ services:
     image: ${GREEN_IMAGE}
     container_name: app_green
     environment:
+      - APP_POOL=green
       - RELEASE_ID=${RELEASE_ID_GREEN}
       - PORT=80
     expose:
@@ -43,7 +45,7 @@ services:
     ports:
       - "${PORT}:80"
     volumes:
-      - ./nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
+      - ./nginx.conf.template:/etc/nginx/user-templates/nginx.conf.template:ro
       - ./render-and-run.sh:/docker-entrypoint.d/99-render-and-run.sh:ro
     environment:
       - ACTIVE_POOL=${ACTIVE_POOL}

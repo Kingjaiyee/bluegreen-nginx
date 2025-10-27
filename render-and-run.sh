@@ -19,6 +19,6 @@ fi
 export BLUE_BACKUP GREEN_BACKUP
 
 # Render nginx.conf
-envsubst '$BLUE_BACKUP $GREEN_BACKUP' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '$BLUE_BACKUP $GREEN_BACKUP' < /etc/nginx/user-templates/nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 # Continue to normal nginx startup
