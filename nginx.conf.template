@@ -1,47 +1,53 @@
-# Nginx templated config. We compute which server is backup using $BLUE_BACKUP / $GREEN_BACKUP,
-# set by render-and-run.sh based on ACTIVE_POOL.
+# --- JSON access log with upstream insights ---
+log_format main_json escape=json
+  '{'
+    '"time_local":"$time_local",'
+    '"remote_addr":"$remote_addr",'
+    '"request":"$request",'
+    '"status":"$status",'
+    '"body_bytes_sent":$body_bytes_sent,'
+    '"request_time":$request_time,'
+    '"upstream_addr":"$upstream_addr",'
+    '"upstream_status":"$upstream_status",'
+    '"upstream_response_time":"$upstream_response_time",'
+    '"pool":"$upstream_http_x_app_pool",'
+    '"release":"$upstream_http_x_release_id",'
+    '"host":"$host",'
+    '"http_referer":"$http_referer",'
+    '"http_user_agent":"$http_user_agent"'
+  '}';
+
+access_log /var/log/nginx/access_json.log main_json;
 
 # --- Upstream with primary/backup and aggressive failure detection
 upstream backend {
-    server app_blue:80 max_fails=1 fail_timeout=3s ${BLUE_BACKUP};
+    server app_blue:80  max_fails=1 fail_timeout=3s ${BLUE_BACKUP};
     server app_green:80 max_fails=1 fail_timeout=3s ${GREEN_BACKUP};
 }
 
 server {
     listen 80;
-    # Limit per-request time so grader sees <10s total
+
+    # Tight total budget <10s
     proxy_connect_timeout 1s;
     proxy_send_timeout 2s;
     proxy_read_timeout 2s;
-    # Retry once on typical transient failures; this causes Blue->Green retry within same client request
+
+    # Retry within same client request on timeout/5xx → backup
     proxy_next_upstream error timeout http_500 http_502 http_503 http_504;
     proxy_next_upstream_timeout 5s;
     proxy_next_upstream_tries 2;
 
-    # Pass original request info
+    # Forward client info + DO NOT strip app headers
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
-
-    # Do NOT strip application headers; make sure they pass through
     proxy_pass_header X-App-Pool;
     proxy_pass_header X-Release-Id;
 
-    location / {
-        proxy_pass http://backend;
-    }
-
-    location = /version {
-        proxy_pass http://backend/version;
-    }
-
-    location = /healthz {
-        proxy_pass http://backend/healthz;
-    }
-
-    # Allow /chaos/* to be proxied too (though grader hits app ports directly)
-    location /chaos/ {
-        proxy_pass http://backend;
-    }
+    location /            { proxy_pass http://backend; }
+    location = /version   { proxy_pass http://backend/version; }
+    location = /healthz   { proxy_pass http://backend/healthz; }
+    location /chaos/      { proxy_pass http://backend; }
 }
