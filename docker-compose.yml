@@ -6,7 +6,6 @@ services:
     container_name: app_blue
     environment:
       - APP_POOL=blue
-      # The sample Node app reads RELEASE_ID and PORT (optional) to render headers and bind.
       - RELEASE_ID=${RELEASE_ID_BLUE}
       - PORT=80
     expose:
@@ -44,9 +43,30 @@ services:
       - app_green
     ports:
       - "${PORT}:80"
+    environment:
+      - ACTIVE_POOL=${ACTIVE_POOL}
     volumes:
       - ./nginx.conf.template:/etc/nginx/user-templates/nginx.conf.template:ro
       - ./render-and-run.sh:/docker-entrypoint.d/99-render-and-run.sh:ro
+      - nginx_logs:/var/log/nginx   # <— shared logs volume (nginx writes)
+
+  alert_watcher:
+    image: python:3.11-slim
+    container_name: alert_watcher
+    depends_on:
+      - nginx
+    working_dir: /app
+    command: /bin/sh -lc "pip install --no-cache-dir -r requirements.txt && python watcher.py"
     environment:
-      - ACTIVE_POOL=${ACTIVE_POOL}
-    # default command stays; our script in /docker-entrypoint.d runs before nginx starts
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - ERROR_RATE_THRESHOLD=${ERROR_RATE_THRESHOLD}
+      - WINDOW_SIZE=${WINDOW_SIZE}
+      - ALERT_COOLDOWN_SEC=${ALERT_COOLDOWN_SEC}
+      - MAINTENANCE_MODE=${MAINTENANCE_MODE}
+    volumes:
+      - nginx_logs:/var/log/nginx:ro   # <— watcher reads logs
+      - ./watcher.py:/app/watcher.py:ro
+      - ./requirements.txt:/app/requirements.txt:ro
+
+volumes:
+  nginx_logs:
