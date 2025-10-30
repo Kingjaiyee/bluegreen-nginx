@@ -1,9 +1,79 @@
-name: optional-ci (disabled by default)
+name: Deploy Blue/Green to Azure VM
+
 on:
+  push:
+    branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      active_pool:
+        description: "blue or green (optional override)"
+        required: false
+        default: ""
+      run_smoke:
+        description: "Run smoke tests after deploy (true/false)"
+        required: false
+        default: "true"
 
 jobs:
-  noop:
+  deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - run: echo "Enable a real test workflow once BLUE_IMAGE/GREEN_IMAGE are pullable from the runner."
+      - name: Checkout (for completeness; VM will pull latest anyway)
+        uses: actions/checkout@v4
+
+      - name: SSH into VM and deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VM_HOST }}              # e.g. 130.131.162.233
+          username: ${{ secrets.VM_USER }}          # e.g. azureuser
+          key: ${{ secrets.VM_SSH_KEY }}            # private key contents
+          port: 22
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            # --- Vars from secrets/inputs ---
+            REPO_URL="${{ secrets.REPO_URL }}"             # e.g. https://github.com/Kingjaiyee/bluegreen-nginx.git
+            WORKDIR="${{ secrets.VM_WORKDIR }}"            # e.g. /home/azureuser/bluegreen-nginx
+            VM_IP="${{ secrets.VM_IP }}"                   # e.g. 130.131.162.233
+            ACTIVE_INPUT="${{ github.event.inputs.active_pool }}"
+            RUN_SMOKE="${{ github.event.inputs.run_smoke }}"
+
+            # --- Prepare workspace on VM ---
+            mkdir -p "$WORKDIR"
+            if [ ! -d "$WORKDIR/.git" ]; then
+              git clone "$REPO_URL" "$WORKDIR"
+            fi
+            cd "$WORKDIR"
+            git fetch origin main --prune
+            git reset --hard origin/main
+
+            # Ensure scripts are executable and LF line endings
+            chmod +x render-and-run.sh || true
+            chmod +x scripts/deploy.sh || true
+            sed -i 's/\r$//' render-and-run.sh nginx.conf.template scripts/deploy.sh || true
+
+            # --- Inject/update .env from repo example OR keep existing ---
+            if [ ! -f .env ]; then
+              cp .env.example .env
+            fi
+
+            # Optional: override ACTIVE_POOL from workflow_dispatch input
+            if [ -n "$ACTIVE_INPUT" ]; then
+              sed -i "s/^ACTIVE_POOL=.*/ACTIVE_POOL=${ACTIVE_INPUT}/" .env
+            fi
+
+            # --- Run deploy script (idempotent) ---
+            bash scripts/deploy.sh
+
+            # --- Optional smoke tests ---
+            if [ "${RUN_SMOKE:-true}" = "true" ]; then
+              echo "Running smoke tests against ${VM_IP} ..."
+              set -x
+              curl -sfI "http://${VM_IP}:8081/version" | egrep 'HTTP|X-App-Pool|X-Release-Id'
+              curl -sfI "http://${VM_IP}:8082/version" | egrep 'HTTP|X-App-Pool|X-Release-Id'
+              curl -sfI "http://${VM_IP}:8080/version" | egrep 'HTTP|X-App-Pool|X-Release-Id'
+              set +x
+              echo "✅ Smoke passed."
+            fi

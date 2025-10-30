@@ -123,3 +123,10 @@ curl -sI http://YOUR_VM_PUBLIC_IP:8080/version | egrep 'HTTP|X-App-Pool|X-Releas
 - **502/504**: check app health on direct ports: `curl -i http://localhost:8081/healthz`
 - **No failover**: ensure `/chaos/start?mode=error` hit **blue** at `8081`.
 - **Swap active pool**: set `ACTIVE_POOL` and reload Nginx: `docker exec nginx_lb nginx -s reload`.
+
+
+## Verification Screenshots
+- Slack – Failover Alert: ![failover](screenshots/01_slack_failover.png)
+- Slack – High Error Rate: ![error-rate](screenshots/02_slack_error_rate.png)
+- Nginx JSON Logs: ![logs](screenshots/03_nginx_json_logs.png)
+
